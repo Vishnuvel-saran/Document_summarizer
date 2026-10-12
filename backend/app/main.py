@@ -1,11 +1,13 @@
 import logging
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app import db as db_module
 from app.core.config import settings
+from app.schemas.db_health import DBHealthResponse
 from app.schemas.health import HealthResponse
 
 logger = logging.getLogger("document_intelligence_api")
@@ -29,6 +31,13 @@ app.add_middleware(
 @app.get(f"{settings.api_v1_prefix}/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     return HealthResponse(status="ok", service="document-intelligence-api")
+
+
+@app.get(f"{settings.api_v1_prefix}/db-health", response_model=DBHealthResponse)
+def db_health() -> DBHealthResponse:
+    if not db_module.is_database_available():
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    return DBHealthResponse(status="ok", database="connected")
 
 
 @app.exception_handler(StarletteHTTPException)

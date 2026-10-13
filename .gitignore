@@ -28,7 +28,7 @@ frontend/.vite/
 *.log
 coverage/
 htmlcov/
-
+nul
 # OS / editor
 .DS_Store
 .vscode/

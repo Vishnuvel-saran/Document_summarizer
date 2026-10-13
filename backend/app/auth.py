@@ -10,16 +10,37 @@ from app.core.config import settings
 security = HTTPBearer(auto_error=False)
 
 
-def verify_supabase_token(token: str) -> dict[str, Any]:
-    secret = os.getenv("SUPABASE_JWT_SECRET", settings.supabase_jwt_secret)
-    if not secret:
-        raise ValueError("SUPABASE_JWT_SECRET is not configured.")
+def _verify_legacy_token(token: str, secret: str) -> dict[str, Any]:
+    payload = jwt.decode(
+        token,
+        secret,
+        algorithms=["HS256"],
+        options={"require": ["sub", "exp"]},
+    )
+
+    if not payload.get("sub"):
+        raise ValueError("JWT missing subject claim.")
+
+    return payload
+
+
+def _verify_jwks_token(token: str) -> dict[str, Any]:
+    supabase_url = (os.getenv("SUPABASE_URL") or settings.supabase_url or "").rstrip(
+        "/"
+    )
+    if not supabase_url:
+        raise ValueError("SUPABASE_URL is not configured.")
+
+    jwks_uri = f"{supabase_url}/auth/v1/.well-known/jwks.json"
+    issuer = f"{supabase_url}/auth/v1"
 
     try:
+        signing_key = jwt.PyJWKClient(jwks_uri).get_signing_key_from_jwt(token)
         payload = jwt.decode(
             token,
-            secret,
-            algorithms=["HS256"],
+            signing_key.key,
+            algorithms=["RS256"],
+            issuer=issuer,
             options={"require": ["sub", "exp"]},
         )
     except jwt.PyJWTError as exc:  # pragma: no cover - exercised via direct tests
@@ -29,6 +50,18 @@ def verify_supabase_token(token: str) -> dict[str, Any]:
         raise ValueError("JWT missing subject claim.")
 
     return payload
+
+
+def verify_supabase_token(token: str) -> dict[str, Any]:
+    secret = os.getenv("SUPABASE_JWT_SECRET") or settings.supabase_jwt_secret
+
+    if secret:
+        try:
+            return _verify_legacy_token(token, secret)
+        except jwt.PyJWTError:
+            pass
+
+    return _verify_jwks_token(token)
 
 
 def get_current_user(

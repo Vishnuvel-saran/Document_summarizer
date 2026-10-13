@@ -1,10 +1,10 @@
 # Document Intelligence Platform
 
-This repository is the foundation for an AI-powered document intelligence platform. Day 1 established the project structure, frontend shell, FastAPI API health endpoint, and a local health-check integration. Day 2 adds the initial database layer, SQL migration, and runtime configuration support required for a secure Supabase-backed foundation.
+This repository is the foundation for an AI-powered document intelligence platform. Day 1 established the project structure, frontend shell, FastAPI API health endpoint, and a local health-check integration. Day 2 adds the initial database layer, SQL migration, and runtime configuration support required for a secure Supabase-backed foundation. Day 3 adds the first secure ingestion pipeline for PDF and DOCX uploads, along with validation and extraction metadata.
 
 ## Current implementation status
 
-Completed for Day 1 and Day 2:
+Completed for Day 1, Day 2, and Day 3:
 
 - React + Vite frontend with a backend status indicator
 - FastAPI API with `GET /api/v1/health`
@@ -12,8 +12,12 @@ Completed for Day 1 and Day 2:
 - SQLAlchemy + Psycopg configuration module
 - versioned SQL migration for the initial schema
 - Supabase-oriented environment configuration examples
-- JWT verification helper boundary for future authenticated backend routes
-- architecture, database, and API documentation
+- JWT verification helper boundary for authenticated backend routes
+- secure `POST /api/v1/documents` upload endpoint for PDF/DOCX files
+- parser service that extracts text and preserves heading/table blocks
+- storage service boundary for a private Supabase Storage bucket
+- document metadata persistence in the `public.documents` table
+- architecture, database, ingestion, and API documentation
 - backend and frontend tests
 
 Deferred to future phases:
@@ -84,6 +88,7 @@ The app exposes:
 
 - `GET /api/v1/health`
 - `GET /api/v1/db-health`
+- `POST /api/v1/documents` for secure PDF/DOCX upload validation and content extraction
 - Swagger UI at `http://127.0.0.1:8000/docs`
 
 ## Supabase and database setup

@@ -1,6 +1,6 @@
 # API contract
 
-## Initial implemented endpoint
+## Initial implemented endpoints
 
 ### GET /api/v1/health
 
@@ -32,13 +32,51 @@ Expected behavior if the backend is unavailable:
 - the HTTP request may fail with a network error or connection refused error;
 - the client should not crash and should provide a retry mechanism.
 
-## Planned endpoints
-
-The following endpoints are intentionally planned for later phases and are not implemented on Day 1.
-
 ### POST /api/v1/documents
 
-Planned. This endpoint will support document upload and initial metadata handling.
+Purpose: accept an authenticated PDF or DOCX upload, validate the file size and type, parse text content, and persist the document metadata with a storage path.
+
+Successful status code: `201 Created`
+
+Request type: multipart form-data with a single file field named `file`.
+
+Required auth: Bearer token verified by the Supabase JWT boundary.
+
+Example request:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/documents \
+  -H "Authorization: Bearer <jwt>" \
+  -F "file=@sample.pdf"
+```
+
+Example response:
+
+```json
+{
+  "id": "8d68f59b-2eb6-4269-836e-024a4d6f4c67",
+  "filename": "sample.pdf",
+  "file_type": "pdf",
+  "status": "uploaded",
+  "storage_path": "user-123/8d68f59b-2eb6-4269-836e-024a4d6f4c67/sample.pdf",
+  "extraction": {
+    "block_count": 2,
+    "warnings": []
+  }
+}
+```
+
+Validation rules:
+
+- only `.pdf` and `.docx` files are accepted;
+- files exceeding 15 MB are rejected with `413`;
+- empty files are rejected with `400`;
+- invalid or unreadable content is rejected with `400`;
+- the endpoint requires a valid bearer token.
+
+## Planned endpoints
+
+The following endpoints are intentionally planned for later phases and are not implemented here.
 
 ### GET /api/v1/documents
 

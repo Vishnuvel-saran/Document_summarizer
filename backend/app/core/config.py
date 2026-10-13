@@ -1,9 +1,8 @@
 import os
-from urllib.parse import quote, urlsplit, urlunsplit
 
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env"))
 
 
 def _split_csv(value: str) -> list[str]:
@@ -11,26 +10,8 @@ def _split_csv(value: str) -> list[str]:
 
 
 def _normalize_database_url(raw_url: str) -> str:
-    if not raw_url:
-        return raw_url
-
     if raw_url.startswith("postgresql://"):
-        parsed = urlsplit(raw_url)
-        if parsed.username and parsed.password:
-            encoded_password = quote(parsed.password, safe="")
-            hostname = parsed.hostname or ""
-            port = f":{parsed.port}" if parsed.port else ""
-            netloc = f"{parsed.username}:{encoded_password}@{hostname}{port}"
-            return urlunsplit(
-                (
-                    "postgresql+psycopg",
-                    netloc,
-                    parsed.path,
-                    parsed.query,
-                    parsed.fragment,
-                )
-            )
-
+        return raw_url.replace("postgresql://", "postgresql+psycopg://", 1)
     return raw_url
 
 

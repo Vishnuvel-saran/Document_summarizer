@@ -41,4 +41,4 @@ PDF blocks are page-aware and keep a source page number. DOCX blocks preserve he
 
 ## Future extension points
 
-The next natural extension is to convert the extracted blocks into chunk records in `public.document_chunks`, then generate embeddings for retrieval and Q&A.
+The Day 4 processing endpoint reuses these extraction blocks to create structure-aware chunks, obtain embeddings through OpenRouter, and persist provenance/vector rows. Retrieval, search, and Q&A remain future work.

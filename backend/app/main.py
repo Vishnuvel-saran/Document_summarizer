@@ -2,6 +2,8 @@ import logging
 import os
 import uuid
 from pathlib import Path
+from typing import Annotated
+from uuid import UUID
 
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,10 +14,21 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app import db as db_module
 from app.auth import get_current_user
 from app.core.config import settings
+from app.repositories.document_chunk_repository import (
+    DocumentChunkRepository,
+    DocumentNotFoundError,
+)
 from app.schemas.db_health import DBHealthResponse
+from app.schemas.document_processing import DocumentProcessingResponse
 from app.schemas.document_upload import DocumentUploadResponse, ExtractionSummary
 from app.schemas.health import HealthResponse
+from app.services.chunking import ChunkingConfig, StructureAwareChunker
 from app.services.document_parser import parse_docx, parse_pdf
+from app.services.document_processing_service import (
+    DocumentProcessingError,
+    DocumentProcessingService,
+)
+from app.services.embeddings.openrouter_provider import OpenRouterEmbeddingProvider
 from app.services.storage_service import SupabaseStorageService
 
 logger = logging.getLogger("document_intelligence_api")
@@ -75,6 +88,43 @@ app.add_middleware(
 )
 
 
+def get_document_processing_service() -> DocumentProcessingService:
+    if settings.embedding_provider != "openrouter":
+        raise HTTPException(
+            status_code=503, detail="Embedding provider is not configured."
+        )
+    if not settings.openrouter_api_key:
+        raise HTTPException(
+            status_code=503, detail="Embedding provider is not configured."
+        )
+    if settings.embedding_dimensions != 1536:
+        raise HTTPException(
+            status_code=503,
+            detail="Configured embedding dimension does not match the database schema.",
+        )
+
+    return DocumentProcessingService(
+        repository=DocumentChunkRepository(),
+        storage=SupabaseStorageService(),
+        chunker=StructureAwareChunker(
+            ChunkingConfig(
+                target_tokens=settings.chunk_target_tokens,
+                overlap_tokens=settings.chunk_overlap_tokens,
+                max_tokens=settings.chunk_max_tokens,
+                tokenizer_encoding=settings.chunk_tokenizer_encoding,
+            )
+        ),
+        embedding_provider=OpenRouterEmbeddingProvider(
+            api_key=settings.openrouter_api_key,
+            model_id=settings.embedding_model,
+            dimension=settings.embedding_dimensions,
+            batch_size=settings.embedding_batch_size,
+            timeout_seconds=settings.embedding_timeout_seconds,
+            max_retries=settings.embedding_max_retries,
+        ),
+    )
+
+
 @app.get(f"{settings.api_v1_prefix}/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     return HealthResponse(status="ok", service="document-intelligence-api")
@@ -93,8 +143,8 @@ def db_health() -> DBHealthResponse:
     status_code=201,
 )
 async def upload_document(
-    file: UploadFile = File(...),
-    user: dict = Depends(get_current_user),
+    file: Annotated[UploadFile, File()],
+    user: Annotated[dict, Depends(get_current_user)],
 ) -> DocumentUploadResponse:
     filename = os.path.basename(file.filename or "document")
     if not filename:
@@ -166,6 +216,32 @@ async def upload_document(
             warnings=extraction.warnings,
         ),
     )
+
+
+@app.post(
+    f"{settings.api_v1_prefix}/documents/{{document_id}}/process",
+    response_model=DocumentProcessingResponse,
+)
+def process_document(
+    document_id: UUID,
+    user: Annotated[dict, Depends(get_current_user)],
+    processor: Annotated[
+        DocumentProcessingService, Depends(get_document_processing_service)
+    ],
+) -> DocumentProcessingResponse:
+    owner_user_id = str(user.get("sub") or user.get("id") or "")
+    if not owner_user_id:
+        raise HTTPException(status_code=401, detail="Invalid authenticated user.")
+
+    try:
+        return processor.process_document(str(document_id), owner_user_id)
+    except DocumentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Document not found.") from exc
+    except DocumentProcessingError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Document processing failed. Check server configuration and retry.",
+        ) from exc
 
 
 @app.exception_handler(StarletteHTTPException)

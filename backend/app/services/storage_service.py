@@ -45,3 +45,17 @@ class SupabaseStorageService:
         )
 
         return storage_path
+
+    def download_document(self, storage_path: str) -> bytes:
+        if not self.is_configured():
+            raise RuntimeError("Supabase Storage is not configured.")
+
+        try:
+            from supabase import create_client
+        except (
+            ImportError
+        ) as exc:  # pragma: no cover - dependency installed during setup
+            raise RuntimeError("The Supabase Python client is not installed.") from exc
+
+        client = create_client(self.supabase_url, self.service_role_key)
+        return client.storage.from_(self.bucket_name).download(storage_path)

@@ -74,6 +74,32 @@ Validation rules:
 - invalid or unreadable content is rejected with `400`;
 - the endpoint requires a valid bearer token.
 
+### POST /api/v1/documents/{document_id}/process
+
+Purpose: process an already uploaded document owned by the authenticated user. The backend downloads the private Storage object, reuses the Day 3 parser, chunks the extraction, generates embeddings through OpenRouter, and atomically replaces the stored chunks and vectors.
+
+Successful status code: `200 OK`
+
+Request body: none.
+
+Required auth: Bearer token verified by the Supabase JWT boundary. Ownership is derived from the verified JWT subject and checked in database queries; the caller cannot provide a `user_id`.
+
+Example response:
+
+```json
+{
+  "document_id": "b66d5af1-717b-4c12-83ef-5ccb924bdd39",
+  "status": "ready",
+  "chunk_count": 4,
+  "embedding_model": "openai/text-embedding-3-small",
+  "skipped": false
+}
+```
+
+Repeated processing with the same file, chunking settings, model, and dimension skips embedding calls when the stored fingerprint and chunk count still match. Processing requires `OPENROUTER_API_KEY`; if it is not configured, the API returns `503` without changing the document.
+
+Expected failures include `404` when the document is not owned by the caller, `500` for a sanitized processing failure, and `503` when provider configuration is unavailable. A failed run does not replace the last valid chunk set.
+
 ## Planned endpoints
 
 The following endpoints are intentionally planned for later phases and are not implemented here.

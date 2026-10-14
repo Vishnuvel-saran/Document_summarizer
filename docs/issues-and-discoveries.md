@@ -42,7 +42,7 @@ The authenticated PDF upload initially failed at several stages, and its first `
 - Focused database tests: `4 passed`.
 - Full backend tests after the transaction fix: `11 passed` (six dependency deprecation warnings).
 - Live upload before the transaction fix: Storage object exists; metadata row absent.
-- Outstanding live verification: retry a valid, text-based PDF upload after the `engine.begin()` change, then confirm both the Storage object and `public.documents` row exist. A previous `201` response alone must not be treated as proof that both writes persisted.
+- The metadata row from the successful upload was repaired using its known Storage path and returned document ID; a subsequent read confirmed the row exists. A new authenticated upload after the transaction fix was not separately run.
 
 ### Changes reverted
 
@@ -52,3 +52,42 @@ The authenticated PDF upload initially failed at several stages, and its first `
 ### Security note
 
 Bearer tokens and a test user's password were pasted into terminal/chat context during debugging. Rotate the test user's password and revoke existing sessions; use a newly issued access token for further tests. Never store those values in this file.
+
+## 2026-10-14: Day 4 chunking, OpenRouter embeddings, and pgvector
+
+### Core issue
+
+The Day 3 extraction and upload path existed, but chunks were not generated, no embedding provider was selected, and the live `document_chunks` table had no vector/provenance fields. DOCX parsing also emitted all paragraphs before all tables, losing body order.
+
+### Diagnosis and provider selection
+
+- Inspected Git status/history, installed packages, parser contract, upload/storage/auth code, initial migration, and actual Supabase constraints.
+- Queried Supabase: the existing `(document_id, chunk_index)` unique constraint and cascading foreign key were present; `vector` was absent. The vector extension was available at version `0.8.2`.
+- Repaired and verified the previously missing Day 3 metadata row; the earlier `201` had proven the Storage write, not durable metadata persistence. The DB session transaction behavior was corrected and covered by a regression test.
+- Added an interleaved DOCX paragraph/table test; it failed before the parser was changed to traverse body XML order, then passed.
+- User selected OpenRouter. Official OpenRouter docs verify `POST https://openrouter.ai/api/v1/embeddings`, batched text inputs, the model ID `openai/text-embedding-3-small`, 8192 context length, and catalog prompt pricing of `$0.02 / 1M` tokens as checked on 2026-10-14. Account credits/entitlement were not inspected.
+- OpenRouter's docs/catalog do not state the output dimension or document a `dimensions` request parameter. The implementation expects the upstream OpenAI model's default 1536 dimensions and validates responses; a live OpenRouter response has not verified this assumption.
+- The provider uses LangChain `OpenAIEmbeddings` only as an OpenAI-compatible HTTP client, with `base_url=https://openrouter.ai/api/v1`; requests route to OpenRouter, not directly to OpenAI.
+- No `OPENROUTER_API_KEY` is configured. Real provider output, account entitlement, and billing behavior were not exercised.
+
+### Changes made
+
+- Added tokenizer-backed structure-aware chunking with configurable 500/75/700 token target/overlap/maximum settings and `cl100k_base` counts.
+- Added chunk provenance for ordered source blocks, headings/sections, tables, page ranges, token-count method, and deterministic content hashes.
+- Added a LangChain OpenAI-compatible embedding client routed to OpenRouter with 32-text batches, a 30-second timeout, two SDK retries, 8192-token input validation, dimension/finiteness/count checks, and sanitized failures.
+- Added migration `backend/migrations/002_chunk_embeddings.sql` for pgvector `vector(1536)`, provenance columns, and processing fingerprint/model/error fields. No ANN index was added. Migration was applied live to Supabase.
+- Added owner-scoped chunk repository and transactionally replaceable chunk sets; remote embeddings are generated before opening the replacement transaction.
+- Added private Storage download and the authenticated processing endpoint/service. It reuses the Day 3 parser and rejects cross-owner access.
+- Added fingerprint-based reprocessing skip and sanitized failure status handling.
+
+### Verification
+
+- Full backend suite after the OpenRouter change: `30 passed, 2 skipped` (the skipped tests require explicit live integration opt-in).
+- Opt-in live Supabase integration: `2 passed`; it uploaded a temporary synthetic PDF to the private bucket, downloaded it, parsed/chunked it, persisted deterministic stub vectors/provenance to pgvector, confirmed unchanged reprocessing skips embeddings, and cleaned up the temporary row/object.
+- Unit tests mock the LangChain embedding client and validate OpenRouter base URL/model configuration, batching, model/vector checks, and sanitized failures.
+- Real OpenRouter embeddings remain unverified because `OPENROUTER_API_KEY` is absent.
+- Retrieval/search, OCR, ANN indexing, and frontend processing UI remain deferred.
+
+### Changes reverted
+
+- No Day 4 changes were intentionally reverted. Existing user modifications and unrelated untracked files were preserved.

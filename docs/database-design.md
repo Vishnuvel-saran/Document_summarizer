@@ -1,6 +1,6 @@
 # Database design
 
-This document captures the initial relational schema for the Day 2 database foundation. The goal is to provide a secure, versioned, and extensible foundation for future document memory, retrieval, and Q&A features without building speculative retrieval logic today.
+This document captures the relational schema through Day 4. The goal is to preserve the secure initial model while adding provenance-rich chunks and vectors, without introducing a retrieval API before Day 5.
 
 ## Core entities
 
@@ -29,12 +29,15 @@ Required fields:
 - `storage_path`: private object-storage reference.
 - `status`: restricted to `uploaded`, `processing`, `ready`, or `failed`.
 - `created_at` and `updated_at`: timezone-aware timestamps.
+- `processing_fingerprint`: optional hash of source bytes, chunking settings, and embedding identity used to skip unchanged reprocessing.
+- `embedding_model`: optional model identifier for the current processed chunk set.
+- `processing_error`: optional sanitized exception class for a recoverable failed processing attempt.
 
 Indexing: the repository adds an index on `(user_id, created_at DESC)` to support ownership-based listings and recent-document queries.
 
 ### document_chunks
 
-This table stores extracted text chunks for a document. At Day 2 the schema intentionally avoids a fixed vector column; the embedding strategy and dimension count will be selected during the retrieval phase.
+This table stores extracted text chunks and embeddings. The Day 4 schema uses the selected upstream model's default 1536-dimensional vector size.
 
 Required fields:
 
@@ -45,11 +48,20 @@ Required fields:
 - `page_number`: optional page hint.
 - `section_title`: optional section name.
 - `token_count`: optional non-negative integer.
+- `page_start` / `page_end`: optional inclusive source page range; `page_number` is populated only for single-page chunks.
+- `block_type`: source kind such as paragraph, table, heading, or mixed.
+- `source_block_indices` / `source_metadata`: JSONB provenance from Day 3 extraction, including table rows where applicable.
+- `token_counting_method`: tokenizer identifier used for the recorded token count.
+- `content_hash`: deterministic SHA-256 hash used as part of processing fingerprints.
+- `embedding`: nullable `vector(1536)`.
+- `embedding_model` / `embedding_dimension`: exact routed model identifier and output dimension for each vector.
 - `created_at`: timezone-aware timestamp.
 
-Uniqueness: `(document_id, chunk_index)` must be unique so chunk ordering remains deterministic and repeatable.
+Uniqueness: `(document_id, chunk_index)` is enforced so chunk ordering remains deterministic and repeatable. Reprocessing replaces a document's full chunk set inside one transaction after parsing and all embeddings succeed.
 
-Provenance note: richer chunk provenance may be needed later for multi-page tables, repeated sections, or content spanning multiple source locations.
+Provenance note: PDF pages are retained; DOCX physical page numbers remain null because the parser cannot infer page layout. Multi-page chunks use ranges and leave `page_number` null. Split tables repeat the header and retain source rows in JSONB metadata.
+
+Vector strategy: exact vector storage only; no ANN index is created at this initial scale. Day 5 owns search operators and retrieval/index evaluation. Searches must filter by `embedding_model`; vectors from different models are not comparable even if dimensions match.
 
 ### conversations
 
@@ -100,11 +112,12 @@ Indexing: the repository adds an index on `(conversation_id, created_at DESC)` t
 
 ## Database migration handling
 
-The repository stores the initial schema as a repeatable migration file:
+The repository stores the schema in versioned migration files:
 
-- `backend/migrations/001_initial_schema.sql`
+- `backend/migrations/001_initial_schema.sql` — initial relational schema.
+- `backend/migrations/002_chunk_embeddings.sql` — pgvector extension, vector/provenance fields, and processing fingerprints.
 
-This makes the schema reproducible in a new project and explains how to reapply it when a database is newly provisioned. If a migration has already been applied, the SQL should be reviewed carefully before re-running it on an existing target, especially if there is any production or user data present.
+Apply migration `002` once after `001` on an existing Day 2 database. It has been applied and verified against the configured Supabase project. Review migrations before applying them to another existing database.
 
 ## Supabase-specific execution model
 

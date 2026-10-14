@@ -39,6 +39,23 @@ class Settings:
         self.supabase_anon_key = values.get("SUPABASE_ANON_KEY", "")
         self.supabase_service_role_key = values.get("SUPABASE_SERVICE_ROLE_KEY", "")
         self.supabase_jwt_secret = values.get("SUPABASE_JWT_SECRET", "")
+        self.openrouter_api_key = values.get("OPENROUTER_API_KEY", "")
+        self.embedding_provider = values.get("EMBEDDING_PROVIDER", "openrouter")
+        self.embedding_model = values.get(
+            "EMBEDDING_MODEL", "openai/text-embedding-3-small"
+        )
+        self.embedding_dimensions = int(values.get("EMBEDDING_DIMENSIONS", "1536"))
+        self.embedding_batch_size = int(values.get("EMBEDDING_BATCH_SIZE", "32"))
+        self.embedding_timeout_seconds = float(
+            values.get("EMBEDDING_TIMEOUT_SECONDS", "30")
+        )
+        self.embedding_max_retries = int(values.get("EMBEDDING_MAX_RETRIES", "2"))
+        self.chunk_target_tokens = int(values.get("CHUNK_TARGET_TOKENS", "500"))
+        self.chunk_overlap_tokens = int(values.get("CHUNK_OVERLAP_TOKENS", "75"))
+        self.chunk_max_tokens = int(values.get("CHUNK_MAX_TOKENS", "700"))
+        self.chunk_tokenizer_encoding = values.get(
+            "CHUNK_TOKENIZER_ENCODING", "cl100k_base"
+        )
 
 
 settings = Settings()

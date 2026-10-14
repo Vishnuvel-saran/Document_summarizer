@@ -1,5 +1,7 @@
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, text
 
+from app import db as db_module
 from app.core.config import Settings
 from app.main import app
 
@@ -36,3 +38,18 @@ def test_db_health_returns_503_when_database_is_unavailable(monkeypatch) -> None
 
     assert response.status_code == 503
     assert response.json() == {"detail": "Database unavailable"}
+
+
+def test_db_session_commits_successful_changes(monkeypatch) -> None:
+    test_engine = create_engine("sqlite://")
+    monkeypatch.setattr(db_module, "engine", test_engine)
+
+    with db_module.db_session() as connection:
+        connection.execute(text("CREATE TABLE documents (id TEXT PRIMARY KEY)"))
+        connection.execute(text("INSERT INTO documents (id) VALUES ('doc-123')"))
+
+    with test_engine.connect() as connection:
+        saved_id = connection.scalar(text("SELECT id FROM documents"))
+
+    assert saved_id == "doc-123"
+    test_engine.dispose()

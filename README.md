@@ -103,10 +103,11 @@ DATABASE_URL=postgresql+psycopg://postgres:postgres@127.0.0.1:5432/document_inte
 SUPABASE_URL=https://<project-ref>.supabase.co
 SUPABASE_ANON_KEY=<anon-key>
 SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
-SUPABASE_JWT_SECRET=<jwt-secret>
+# Optional: legacy-only for older HS256 Supabase setups.
+SUPABASE_JWT_SECRET=
 ```
 
-Note: the service-role key must never be exposed to the browser. The frontend should only use non-sensitive client-facing configuration.
+Note: modern Supabase projects normally use JWKS/RS256 verification and do not require `SUPABASE_JWT_SECRET`. The service-role key must never be exposed to the browser. The frontend should only use non-sensitive client-facing configuration.
 
 ## Frontend setup
 

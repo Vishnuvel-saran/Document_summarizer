@@ -12,6 +12,7 @@ def test_verify_supabase_token_accepts_valid_jwt_with_jwks(monkeypatch) -> None:
 
     payload = {
         "sub": "user-123",
+        "aud": "authenticated",
         "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
     }
     token = jwt.encode(payload, "test-secret", algorithm="HS256")
@@ -24,11 +25,13 @@ def test_verify_supabase_token_accepts_valid_jwt_with_jwks(monkeypatch) -> None:
         patch(
             "app.auth.jwt.decode",
             return_value=payload,
-        ),
+        ) as mock_decode,
     ):
         mock_client.return_value.get_signing_key_from_jwt.return_value = signing_key
 
         assert verify_supabase_token(token)["sub"] == "user-123"
+        assert set(mock_decode.call_args.kwargs["algorithms"]) == {"ES256", "RS256"}
+        assert mock_decode.call_args.kwargs["audience"] == "authenticated"
 
 
 def test_verify_supabase_token_rejects_invalid_jwt(monkeypatch) -> None:

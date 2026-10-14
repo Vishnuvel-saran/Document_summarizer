@@ -2,7 +2,9 @@ import os
 
 from dotenv import load_dotenv
 
-load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env"))
+load_dotenv(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", ".env")
+)
 
 
 def _split_csv(value: str) -> list[str]:

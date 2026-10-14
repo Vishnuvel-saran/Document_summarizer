@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import Any
 
@@ -8,6 +9,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from app.core.config import settings
 
 security = HTTPBearer(auto_error=False)
+logger = logging.getLogger(__name__)
 
 
 def _verify_legacy_token(token: str, secret: str) -> dict[str, Any]:
@@ -39,11 +41,13 @@ def _verify_jwks_token(token: str) -> dict[str, Any]:
         payload = jwt.decode(
             token,
             signing_key.key,
-            algorithms=["RS256"],
+            algorithms=["ES256", "RS256"],
+            audience="authenticated",
             issuer=issuer,
             options={"require": ["sub", "exp"]},
         )
     except jwt.PyJWTError as exc:  # pragma: no cover - exercised via direct tests
+        logger.warning("Supabase JWT validation failed: %s", type(exc).__name__)
         raise ValueError("Invalid or expired JWT.") from exc
 
     if not payload.get("sub"):

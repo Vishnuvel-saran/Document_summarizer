@@ -9,12 +9,6 @@ from sqlalchemy.exc import SQLAlchemyError
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env"))
 
 
-def _normalize_database_url(raw_url: str) -> str:
-    if raw_url.startswith("postgresql://"):
-        return raw_url.replace("postgresql://", "postgresql://", 1)
-    return raw_url
-
-
 class DBSettings:
     def __init__(self, env: dict[str, str] | None = None) -> None:
         values = env or os.environ
@@ -32,7 +26,7 @@ engine: Engine = create_engine(settings.database_url, pool_pre_ping=True)
 
 @contextmanager
 def db_session():
-    with engine.connect() as connection:
+    with engine.begin() as connection:
         yield connection
 
 

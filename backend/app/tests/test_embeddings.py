@@ -27,6 +27,17 @@ def test_embedding_provider_batches_and_preserves_input_order() -> None:
     assert provider.dimension == 2
 
 
+def test_embedding_provider_embeds_single_query() -> None:
+    embeddings = MagicMock()
+    embeddings.embed_documents.return_value = [[1.0, 2.0]]
+    provider = OpenRouterEmbeddingProvider(
+        api_key=None, dimension=2, embedding_client=embeddings
+    )
+
+    assert provider.embed_query("contract notice period") == [1.0, 2.0]
+    embeddings.embed_documents.assert_called_once_with(["contract notice period"])
+
+
 def test_embedding_provider_rejects_wrong_vector_count() -> None:
     embeddings = MagicMock()
     embeddings.embed_documents.return_value = [[1.0, 1.0]]

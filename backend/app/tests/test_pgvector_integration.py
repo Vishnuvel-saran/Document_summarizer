@@ -12,6 +12,8 @@ from app.repositories.document_chunk_repository import DocumentChunkRepository
 from app.schemas.chunk import DocumentChunk
 from app.services.chunking import ChunkingConfig, StructureAwareChunker
 from app.services.document_processing_service import DocumentProcessingService
+from app.services.embeddings.openrouter_provider import OpenRouterEmbeddingProvider
+from app.services.retrieval.semantic import SemanticRetriever
 from app.services.storage_service import SupabaseStorageService
 
 
@@ -196,3 +198,54 @@ def test_real_storage_to_pgvector_processing_with_stub_embeddings() -> None:
                 settings.supabase_url, settings.supabase_service_role_key
             )
             client.storage.from_("documents").remove([storage_path])
+
+
+@pytest.mark.skipif(
+    not settings.openrouter_api_key,
+    reason="OPENROUTER_API_KEY is required for live semantic retrieval integration.",
+)
+def test_live_openrouter_semantic_search_against_supabase_document() -> None:
+    repository = DocumentChunkRepository()
+    with db_session() as connection:
+        row = connection.execute(
+            text(
+                """
+                SELECT id, user_id
+                FROM public.documents
+                WHERE status = 'ready'
+                  AND embedding_model = :model_id
+                  AND EXISTS (
+                      SELECT 1 FROM public.document_chunks c
+                      WHERE c.document_id = documents.id
+                        AND c.embedding IS NOT NULL
+                  )
+                ORDER BY updated_at DESC
+                LIMIT 1
+                """
+            ),
+            {"model_id": settings.embedding_model},
+        ).first()
+    if row is None:
+        pytest.skip("No ready document with compatible vectors is available.")
+
+    retriever = SemanticRetriever(
+        repository,
+        OpenRouterEmbeddingProvider(
+            api_key=settings.openrouter_api_key,
+            model_id=settings.embedding_model,
+            dimension=settings.embedding_dimensions,
+            batch_size=1,
+        ),
+    )
+    results = retriever.search(
+        user_id=str(row.user_id),
+        document_id=str(row.id),
+        query="Retrieve the most relevant passage from this document.",
+        top_k=3,
+    )
+
+    assert results
+    assert results[0].rank == 1
+    assert all(result.document_id == str(row.id) for result in results)
+    assert all(result.retrieval_mode == "semantic" for result in results)
+    assert all(result.cosine_distance is not None for result in results)

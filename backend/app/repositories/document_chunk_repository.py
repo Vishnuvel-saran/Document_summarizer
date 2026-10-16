@@ -17,6 +17,14 @@ class DocumentNotFoundError(LookupError):
     pass
 
 
+class DocumentNotReadyError(RuntimeError):
+    pass
+
+
+class EmbeddingModelMismatchError(RuntimeError):
+    pass
+
+
 class DocumentChunkRepository:
     def __init__(
         self,
@@ -198,6 +206,106 @@ class DocumentChunkRepository:
                     {"document_id": document_id, "user_id": user_id},
                 ).scalar_one()
             )
+
+    def ensure_embedding_compatibility(
+        self, document_id: str, user_id: str, model_id: str, dimension: int
+    ) -> bool:
+        with self._session_factory() as connection:
+            row = (
+                connection.execute(
+                    text(
+                        """
+                    SELECT d.status, d.embedding_model,
+                           COUNT(c.id) AS chunk_count,
+                           COUNT(c.id) FILTER (
+                               WHERE c.embedding IS NULL
+                                  OR c.embedding_model IS DISTINCT FROM :model_id
+                                  OR c.embedding_dimension IS DISTINCT FROM :dimension
+                                  OR vector_dims(c.embedding) IS DISTINCT FROM :dimension
+                           ) AS incompatible_count
+                    FROM public.documents d
+                    LEFT JOIN public.document_chunks c ON c.document_id = d.id
+                    WHERE d.id = :document_id AND d.user_id = :user_id
+                    GROUP BY d.id, d.status, d.embedding_model
+                    """
+                    ),
+                    {
+                        "document_id": document_id,
+                        "user_id": user_id,
+                        "model_id": model_id,
+                        "dimension": dimension,
+                    },
+                )
+                .mappings()
+                .first()
+            )
+
+        if row is None:
+            raise DocumentNotFoundError("Document not found.")
+        if row["status"] != "ready":
+            raise DocumentNotReadyError("Document is not ready for retrieval.")
+        if row["chunk_count"] == 0:
+            return False
+        if row["embedding_model"] != model_id or row["incompatible_count"]:
+            raise EmbeddingModelMismatchError(
+                "Stored embeddings do not match the configured model and dimension."
+            )
+        return True
+
+    def semantic_search(
+        self,
+        document_id: str,
+        user_id: str,
+        query_vector: list[float],
+        model_id: str,
+        dimension: int,
+        top_k: int,
+    ) -> list[dict[str, Any]]:
+        if len(query_vector) != dimension or any(
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+            for value in query_vector
+        ):
+            raise ValueError("Query embedding has invalid values or dimension.")
+
+        vector_literal = (
+            "[" + ",".join(format(value, ".9g") for value in query_vector) + "]"
+        )
+        with self._session_factory() as connection:
+            rows = (
+                connection.execute(
+                    text(
+                        """
+                    SELECT c.id, c.document_id, c.content, c.page_number, c.page_start,
+                           c.page_end, c.section_title, c.block_type,
+                           c.source_block_indices, c.source_metadata, c.chunk_index,
+                           c.embedding <=> CAST(:query_vector AS vector(1536))
+                               AS cosine_distance
+                    FROM public.document_chunks c
+                    JOIN public.documents d ON d.id = c.document_id
+                    WHERE c.document_id = :document_id
+                      AND d.user_id = :user_id
+                      AND c.embedding_model = :model_id
+                      AND c.embedding_dimension = :dimension
+                    ORDER BY c.embedding <=> CAST(:query_vector AS vector(1536)) ASC,
+                             c.chunk_index ASC
+                    LIMIT :top_k
+                    """
+                    ),
+                    {
+                        "document_id": document_id,
+                        "user_id": user_id,
+                        "query_vector": vector_literal,
+                        "model_id": model_id,
+                        "dimension": dimension,
+                        "top_k": top_k,
+                    },
+                )
+                .mappings()
+                .all()
+            )
+            return [dict(row) for row in rows]
 
     def list_chunks(self, document_id: str, user_id: str) -> list[dict[str, Any]]:
         with self._session_factory() as connection:

@@ -17,18 +17,22 @@ from app.core.config import settings
 from app.repositories.document_chunk_repository import (
     DocumentChunkRepository,
     DocumentNotFoundError,
+    DocumentNotReadyError,
 )
 from app.schemas.db_health import DBHealthResponse
 from app.schemas.document_processing import DocumentProcessingResponse
 from app.schemas.document_upload import DocumentUploadResponse, ExtractionSummary
 from app.schemas.health import HealthResponse
+from app.schemas.retrieval import DocumentSearchRequest, DocumentSearchResponse
 from app.services.chunking import ChunkingConfig, StructureAwareChunker
 from app.services.document_parser import parse_docx, parse_pdf
 from app.services.document_processing_service import (
     DocumentProcessingError,
     DocumentProcessingService,
 )
+from app.services.embeddings.openrouter_provider import EmbeddingProviderError
 from app.services.embeddings.openrouter_provider import OpenRouterEmbeddingProvider
+from app.services.retrieval.service import RetrievalService
 from app.services.storage_service import SupabaseStorageService
 
 logger = logging.getLogger("document_intelligence_api")
@@ -241,6 +245,55 @@ def process_document(
         raise HTTPException(
             status_code=500,
             detail="Document processing failed. Check server configuration and retry.",
+        ) from exc
+
+
+@app.post(
+    f"{settings.api_v1_prefix}/documents/{{document_id}}/search",
+    response_model=DocumentSearchResponse,
+)
+def search_document_chunks(
+    document_id: UUID,
+    request: DocumentSearchRequest,
+    user: Annotated[dict, Depends(get_current_user)],
+    repository: Annotated[DocumentChunkRepository, Depends()],
+    embedding_provider: Annotated[
+        OpenRouterEmbeddingProvider, Depends()
+    ],
+) -> DocumentSearchResponse:
+    owner_user_id = str(user.get("sub") or user.get("id") or "")
+    if not owner_user_id:
+        raise HTTPException(status_code=401, detail="Invalid authenticated user.")
+
+    # Ensure the request document_id matches the path parameter
+    if str(document_id) != request.document_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Document ID in path does not match document ID in request body",
+        )
+
+    # Initialize retrieval service
+    retrieval_service = RetrievalService(repository, embedding_provider)
+
+    try:
+        results = retrieval_service.search(request, owner_user_id)
+        return DocumentSearchResponse(
+            document_id=request.document_id,
+            query=request.query,
+            mode=request.mode,
+            results=results,
+        )
+    except DocumentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Document not found.") from exc
+    except DocumentNotReadyError as exc:
+        raise HTTPException(
+            status_code=400, detail="Document is not ready for retrieval."
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except EmbeddingProviderError as exc:
+        raise HTTPException(
+            status_code=503, detail="Embedding provider unavailable."
         ) from exc
 
 

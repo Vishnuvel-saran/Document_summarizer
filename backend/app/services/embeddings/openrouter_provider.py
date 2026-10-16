@@ -103,3 +103,11 @@ class OpenRouterEmbeddingProvider:
                 vectors.append([float(value) for value in vector])
 
         return vectors
+
+    def embed_query(self, text: str) -> list[float]:
+        vectors = self.embed_documents([text])
+        if len(vectors) != 1:
+            raise EmbeddingProviderError(
+                "The embedding provider returned an unexpected query vector count."
+            )
+        return vectors[0]

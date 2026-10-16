@@ -1,10 +1,10 @@
 # Document Intelligence Platform
 
-This repository is the foundation for an AI-powered document intelligence platform. Day 1 established the app foundation, Day 2 added the Supabase database/auth boundary, Day 3 implemented secure PDF/DOCX ingestion, and Day 4 adds structure-aware chunking, embeddings, and pgvector persistence.
+This repository is the foundation for an AI-powered document intelligence platform. Day 1 established the app foundation, Day 2 added the Supabase database/auth boundary, Day 3 implemented secure PDF/DOCX ingestion, Day 4 adds structure-aware chunking, embeddings, and pgvector persistence, and Day 5 implements BM25, semantic search, and hybrid RRF retrieval.
 
 ## Current implementation status
 
-Completed for Day 1 through Day 4:
+Completed for Day 1 through Day 5:
 
 - React + Vite frontend with a backend status indicator
 - FastAPI API with `GET /api/v1/health`
@@ -21,13 +21,15 @@ Completed for Day 1 through Day 4:
 - LangChain `OpenAIEmbeddings` adapter routed to OpenRouter's `openai/text-embedding-3-small`
 - pgvector persistence and authenticated `POST /api/v1/documents/{document_id}/process`
 - idempotent reprocessing with transactional chunk replacement
+- **BM25 lexical retrieval** with `rank-bm25` for exact terminology matching
+- **Semantic retrieval** via pgvector cosine similarity and OpenRouter query embeddings
+- **Hybrid retrieval** combining BM25 and semantic with Reciprocal Rank Fusion (RRF, k0=60)
+- **Search API**: `POST /api/v1/documents/{document_id}/search` supporting `bm25`, `semantic`, and `hybrid` modes
 - architecture, database, ingestion, and API documentation
 - backend and frontend tests
 
 Deferred to future phases:
 
-- vector similarity retrieval and search APIs
-- hybrid search and reranking
 - LLM orchestrator and OpenRouter routing
 - summarization and legal extraction workflows
 - full auth UI and session flows
@@ -94,6 +96,7 @@ The app exposes:
 - `GET /api/v1/db-health`
 - `POST /api/v1/documents` for secure PDF/DOCX upload validation and content extraction
 - `POST /api/v1/documents/{document_id}/process` for authenticated chunking, embeddings, and vector persistence
+- `POST /api/v1/documents/{document_id}/search` for BM25, semantic, and hybrid retrieval
 - Swagger UI at `http://127.0.0.1:8000/docs`
 
 ## Supabase and database setup
@@ -200,4 +203,4 @@ npm test -- --run
 
 ## Future phases
 
-Retrieval, hybrid search, reranking, summarization, clause extraction, and chat remain deferred. Scanned-document OCR is not implemented.
+LLM orchestrator, OpenRouter routing, summarization, clause extraction, chat, and reranking remain deferred. Scanned-document OCR is not implemented.

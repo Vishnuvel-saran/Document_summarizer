@@ -23,7 +23,14 @@ from app.schemas.db_health import DBHealthResponse
 from app.schemas.document_processing import DocumentProcessingResponse
 from app.schemas.document_upload import DocumentUploadResponse, ExtractionSummary
 from app.schemas.health import HealthResponse
-from app.schemas.retrieval import DocumentSearchRequest, DocumentSearchResponse
+from app.schemas.retrieval import (
+    DocumentAnswerRequest,
+    DocumentAnswerResponse,
+    DocumentSearchRequest,
+    DocumentSearchResponse,
+)
+from app.services.answer.client import AnswerClientError, OpenRouterAnswerClient
+from app.services.answer.service import AnswerService
 from app.services.chunking import ChunkingConfig, StructureAwareChunker
 from app.services.document_parser import parse_docx, parse_pdf
 from app.services.document_processing_service import (
@@ -127,6 +134,32 @@ def get_document_processing_service() -> DocumentProcessingService:
             max_retries=settings.embedding_max_retries,
         ),
     )
+
+
+def get_embedding_provider() -> OpenRouterEmbeddingProvider:
+    """FastAPI dependency: builds and validates the embedding provider from settings.
+
+    Shared by the /search and /answer endpoints so provider construction is
+    never duplicated and config validation happens in one place.
+    """
+    if not settings.openrouter_api_key:
+        raise HTTPException(
+            status_code=503, detail="Embedding provider is not configured."
+        )
+    if settings.embedding_dimensions != 1536:
+        raise HTTPException(
+            status_code=503,
+            detail="Configured embedding dimension does not match the database schema.",
+        )
+    return OpenRouterEmbeddingProvider(
+        api_key=settings.openrouter_api_key,
+        model_id=settings.embedding_model,
+        dimension=settings.embedding_dimensions,
+        batch_size=settings.embedding_batch_size,
+        timeout_seconds=settings.embedding_timeout_seconds,
+        max_retries=settings.embedding_max_retries,
+    )
+
 
 
 @app.get(f"{settings.api_v1_prefix}/health", response_model=HealthResponse)
@@ -258,7 +291,7 @@ def search_document_chunks(
     user: Annotated[dict, Depends(get_current_user)],
     repository: Annotated[DocumentChunkRepository, Depends()],
     embedding_provider: Annotated[
-        OpenRouterEmbeddingProvider, Depends()
+        OpenRouterEmbeddingProvider, Depends(get_embedding_provider)
     ],
 ) -> DocumentSearchResponse:
     owner_user_id = str(user.get("sub") or user.get("id") or "")
@@ -295,6 +328,85 @@ def search_document_chunks(
         raise HTTPException(
             status_code=503, detail="Embedding provider unavailable."
         ) from exc
+
+
+
+def get_answer_client() -> OpenRouterAnswerClient:
+    """FastAPI dependency that builds the answer-generation client."""
+    if not settings.answer_api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="Answer generation is not configured. Set ANSWER_API_KEY.",
+        )
+    return OpenRouterAnswerClient(
+        api_key=settings.answer_api_key,
+        model=settings.answer_model,
+        max_tokens=settings.answer_max_tokens,
+    )
+
+
+@app.post(
+    f"{settings.api_v1_prefix}/documents/{{document_id}}/answer",
+    response_model=DocumentAnswerResponse,
+)
+def answer_document_question(
+    document_id: UUID,
+    request: DocumentAnswerRequest,
+    user: Annotated[dict, Depends(get_current_user)],
+    repository: Annotated[DocumentChunkRepository, Depends()],
+    embedding_provider: Annotated[
+        OpenRouterEmbeddingProvider, Depends(get_embedding_provider)
+    ],
+    answer_client: Annotated[OpenRouterAnswerClient, Depends(get_answer_client)],
+) -> DocumentAnswerResponse:
+    owner_user_id = str(user.get("sub") or user.get("id") or "")
+    if not owner_user_id:
+        raise HTTPException(status_code=401, detail="Invalid authenticated user.")
+
+    # Step 1: retrieve evidence chunks
+    search_request = DocumentSearchRequest(
+        document_id=str(document_id),
+        query=request.query,
+        mode=request.mode,
+        top_k=request.top_k,
+    )
+    retrieval_service = RetrievalService(repository, embedding_provider)
+
+    try:
+        chunks = retrieval_service.search(search_request, owner_user_id)
+    except DocumentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Document not found.") from exc
+    except DocumentNotReadyError as exc:
+        raise HTTPException(
+            status_code=400, detail="Document is not ready for retrieval."
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except EmbeddingProviderError as exc:
+        raise HTTPException(
+            status_code=503, detail="Embedding provider unavailable."
+        ) from exc
+
+    # Step 2: generate grounded answer from retrieved evidence
+    answer_service = AnswerService(answer_client)
+    try:
+        result = answer_service.answer(query=request.query, chunks=chunks)
+    except AnswerClientError as exc:
+        raise HTTPException(
+            status_code=503, detail="Answer generation service unavailable."
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return DocumentAnswerResponse(
+        document_id=str(document_id),
+        query=request.query,
+        mode=request.mode,
+        answer=result.answer,
+        cited_chunk_ids=result.cited_chunk_ids,
+        invalid_citations=result.invalid_citations,
+        retrieved_chunks=chunks,
+    )
 
 
 @app.exception_handler(StarletteHTTPException)

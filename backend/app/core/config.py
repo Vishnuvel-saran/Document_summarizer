@@ -40,6 +40,11 @@ class Settings:
         self.supabase_service_role_key = values.get("SUPABASE_SERVICE_ROLE_KEY", "")
         self.supabase_jwt_secret = values.get("SUPABASE_JWT_SECRET", "")
         self.openrouter_api_key = values.get("OPENROUTER_API_KEY", "")
+        self.answer_api_key = values.get("ANSWER_API_KEY", "")
+        self.answer_model = values.get(
+            "ANSWER_MODEL", "google/gemma-4-26b-a4b-it:free"
+        )
+        self.answer_max_tokens = int(values.get("ANSWER_MAX_TOKENS", "1024"))
         self.embedding_provider = values.get("EMBEDDING_PROVIDER", "openrouter")
         self.embedding_model = values.get(
             "EMBEDDING_MODEL", "openai/text-embedding-3-small"

@@ -40,3 +40,20 @@ class DocumentSearchResponse(BaseModel):
     query: str
     mode: RetrievalMode
     results: list[RetrievalResult]
+
+
+class DocumentAnswerRequest(BaseModel):
+    query: str
+    mode: RetrievalMode = "hybrid"
+    top_k: int = Field(default=5, ge=1, le=20)
+
+
+class DocumentAnswerResponse(BaseModel):
+    document_id: str
+    query: str
+    mode: RetrievalMode
+    answer: str
+    cited_chunk_ids: list[str]
+    invalid_citations: list[str]
+    retrieved_chunks: list[RetrievalResult]
+

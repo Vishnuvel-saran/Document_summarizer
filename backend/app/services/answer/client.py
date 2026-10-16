@@ -69,3 +69,4 @@ class OpenRouterAnswerClient:
             raise AnswerClientError("The answer provider returned an empty response.")
 
         return choice.message.content.strip()
+

@@ -161,3 +161,4 @@ class AnsweredQuery:
     def has_evidence(self) -> bool:
         """True when the answer cites at least one retrieved chunk."""
         return bool(self.cited_chunk_ids)
+

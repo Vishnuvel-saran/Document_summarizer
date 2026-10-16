@@ -244,3 +244,4 @@ def test_answer_client_wraps_provider_error() -> None:
     client = OpenRouterAnswerClient(api_key="key", _client=mock_openai)
     with pytest.raises(AnswerClientError, match="request failed"):
         client.complete([{"role": "user", "content": "Hello"}])
+

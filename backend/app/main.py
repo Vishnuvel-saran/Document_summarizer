@@ -100,20 +100,7 @@ app.add_middleware(
 
 
 def get_document_processing_service() -> DocumentProcessingService:
-    if settings.embedding_provider != "openrouter":
-        raise HTTPException(
-            status_code=503, detail="Embedding provider is not configured."
-        )
-    if not settings.openrouter_api_key:
-        raise HTTPException(
-            status_code=503, detail="Embedding provider is not configured."
-        )
-    if settings.embedding_dimensions != 1536:
-        raise HTTPException(
-            status_code=503,
-            detail="Configured embedding dimension does not match the database schema.",
-        )
-
+    embedding_provider = get_embedding_provider()
     return DocumentProcessingService(
         repository=DocumentChunkRepository(),
         storage=SupabaseStorageService(),
@@ -125,15 +112,9 @@ def get_document_processing_service() -> DocumentProcessingService:
                 tokenizer_encoding=settings.chunk_tokenizer_encoding,
             )
         ),
-        embedding_provider=OpenRouterEmbeddingProvider(
-            api_key=settings.openrouter_api_key,
-            model_id=settings.embedding_model,
-            dimension=settings.embedding_dimensions,
-            batch_size=settings.embedding_batch_size,
-            timeout_seconds=settings.embedding_timeout_seconds,
-            max_retries=settings.embedding_max_retries,
-        ),
+        embedding_provider=embedding_provider,
     )
+
 
 
 def get_embedding_provider() -> OpenRouterEmbeddingProvider:

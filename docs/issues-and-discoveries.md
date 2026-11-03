@@ -91,3 +91,52 @@ The Day 3 extraction and upload path existed, but chunks were not generated, no 
 ### Changes reverted
 
 - No Day 4 changes were intentionally reverted. Existing user modifications and unrelated untracked files were preserved.
+
+## 2026-11-03: Day 5 – Supabase direct DB connection broken by IPv6 migration
+
+### Core issue
+
+The direct PostgreSQL connection to Supabase (`db.<project-ref>.supabase.co`, port `5432`) worked during Day 2–4 but failed with `[Errno 11001] getaddrinfo failed` on Day 5. No application code or credentials had changed.
+
+### Errors and observations
+
+- `sqlalchemy.exc.OperationalError: (psycopg.OperationalError) [Errno 11001] getaddrinfo failed` — raised at engine connect time, not at query execution. This error class means the OS could not resolve the hostname to a usable socket address before a TCP connection was even attempted.
+- `Resolve-DnsName db.<project-ref>.supabase.co -Type A` returned only an `SOA` record — no IPv4 `A` record exists for that hostname any more.
+- `Resolve-DnsName db.<project-ref>.supabase.co -Type AAAA` returned a valid IPv6 address (`2406:da1a:b00:…`).
+- `Test-NetConnection -Port 5432` to the same host returned `False` — the current network cannot reach the Supabase direct host over IPv6 on port 5432.
+- `socket.getaddrinfo('db.<project-ref>.supabase.co', 5432)` raised the same error from within the `.venv` Python process, confirming the failure is at the OS resolver layer, not inside SQLAlchemy or psycopg.
+- `socket.getaddrinfo('aws-0-ap-south-1.pooler.supabase.com', 6543)` resolved successfully to two IPv4 addresses (`65.0.195.55`, `3.111.105.85`).
+
+### Root cause
+
+**Supabase migrated direct database connections to IPv6-only** between October and November 2026. The project's direct connection hostname (`db.<project-ref>.supabase.co`) no longer publishes an IPv4 A record. The current machine and/or network have no outbound IPv6 connectivity to the Supabase region, so the hostname is unresolvable and every connection attempt fails immediately.
+
+This is a Supabase infrastructure change, not an application bug. The code, `DATABASE_URL` format, credentials, and psycopg driver are all correct.
+
+### Diagnosis methods
+
+- Compared `Resolve-DnsName` A vs AAAA record responses to confirm the hostname dropped its IPv4 record.
+- Used `socket.getaddrinfo` inside the virtual environment to confirm the failure is at OS level, not a library issue.
+- Tested the Supabase connection pooler hostname to confirm it still resolves to IPv4 addresses.
+- Ran the full test suite (68/68 passed) to confirm no application code regression — the failure is purely environmental.
+
+### Changes made
+
+- `backend/.env`: changed `DATABASE_URL` from the direct connection URL (`db.<project-ref>.supabase.co`, port `5432`, user `postgres`) to the Supabase Supavisor connection pooler URL (`aws-0-ap-south-1.pooler.supabase.com`, port `6543`, user `postgres.<project-ref>`). The password and database name are unchanged. `sslmode=require` is preserved.
+- `backend/requirements.txt`: added explicit `openai>=1.54.0` pin. The package was already installed as a transitive dependency of `langchain-openai`, but `services/answer/client.py` imports it directly and it should be pinned.
+- `backend/.env`: fixed a missing closing double-quote on `ANSWER_API_KEY` that caused `python-dotenv` to absorb the next two lines (`ANSWER_MODEL`, `ANSWER_MAX_TOKENS`) into the key's value, making both variables invisible to the app.
+
+### Verification
+
+- Re-ran the DB verification script after switching to the pooler URL: connected successfully to PostgreSQL 17.11, confirmed `vector` extension v0.8.2, all public tables, and the full `document_chunks` column set as defined in migrations `001` and `002`.
+- Live data confirmed: `1` document row, `1` chunk row with a stored embedding.
+- Full test suite: `68 passed` — no regressions.
+
+### Note on HNSW index
+
+The Day 5 spec mentioned adding an HNSW vector index. This project follows the convention of expressing all schema changes through numbered SQL migration files (`backend/migrations/`). The existing migrations (`001`, `002`) intentionally do not include an ANN index, as noted in the Day 4 log. No ad-hoc index was created. If an HNSW index is needed in a future phase, it must be added as `003_hnsw_index.sql` and applied through the migration process — not run as an ad-hoc statement.
+
+### Changes reverted
+
+- No application code changes were reverted. The `.env` changes are local configuration only and are not tracked by Git.
+

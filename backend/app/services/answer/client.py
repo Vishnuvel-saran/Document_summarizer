@@ -24,7 +24,7 @@ class OpenRouterAnswerClient:
         self,
         *,
         api_key: str,
-        model: str = "google/gemma-4-26b-a4b-it:free",
+        model: str = "nvidia/nemotron-3.5-super-vl:free",
         max_tokens: int = 1024,
         temperature: float = 0.2,
         timeout_seconds: float = 60.0,

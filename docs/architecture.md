@@ -63,6 +63,12 @@ A future persistence layer will likely include:
 
 The database, vector store, and storage interfaces are planned components and are not part of Day 1 implementation.
 
+## Hierarchical summarization pipeline
+
+Document-level summaries use a separate path from retrieval. `POST /api/v1/documents/{document_id}/summary` first verifies document ownership, loads every stored chunk ordered by `chunk_index`, and rejects documents with no usable text. The summarization service groups those chunks into bounded map inputs, calls the configured OpenRouter chat model sequentially for map-stage findings, and combines intermediate findings through one or more reduction levels.
+
+The same service validates every returned evidence ID against the authorized original chunk set and replaces model-generated location fields with trusted database page and section metadata. Summary output is transient and is not persisted. Embeddings continue to use `openai/text-embedding-3-small`; answer and summary generation use the separately configured `ANSWER_MODEL` through the OpenRouter-compatible endpoint.
+
 ## Security and validation boundaries
 
 The architecture keeps key controls in the backend, including:

@@ -28,6 +28,7 @@ from app.schemas.retrieval import (
     DocumentSearchRequest,
     DocumentSearchResponse,
 )
+from app.schemas.summary import DocumentSummaryRequest, DocumentSummaryResponse
 from app.services.answer.client import AnswerClientError, OpenRouterAnswerClient
 from app.services.answer.service import AnswerService
 from app.services.chunking import ChunkingConfig, StructureAwareChunker
@@ -40,6 +41,12 @@ from app.services.embeddings.openrouter_provider import EmbeddingProviderError
 from app.services.embeddings.openrouter_provider import OpenRouterEmbeddingProvider
 from app.services.retrieval.service import RetrievalService
 from app.services.storage_service import SupabaseStorageService
+from app.services.summarization import (
+    EmptyDocumentError,
+    EvidenceValidationError,
+    HierarchicalSummarizationService,
+    SummarizationError,
+)
 
 logger = logging.getLogger("document_intelligence_api")
 MAX_UPLOAD_SIZE_BYTES = 15 * 1024 * 1024
@@ -384,6 +391,48 @@ def answer_document_question(
         invalid_citations=result.invalid_citations,
         retrieved_chunks=chunks,
     )
+
+
+@app.post(
+    f"{settings.api_v1_prefix}/documents/{{document_id}}/summary",
+    response_model=DocumentSummaryResponse,
+)
+def summarize_document(
+    document_id: UUID,
+    request: DocumentSummaryRequest,
+    user: Annotated[dict, Depends(get_current_user)],
+    repository: Annotated[DocumentChunkRepository, Depends()],
+    answer_client: Annotated[OpenRouterAnswerClient, Depends(get_answer_client)],
+) -> DocumentSummaryResponse:
+    owner_user_id = str(user.get("sub") or user.get("id") or "")
+    if not owner_user_id:
+        raise HTTPException(status_code=401, detail="Invalid authenticated user.")
+
+    document = repository.get_owned_document(str(document_id), owner_user_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found.")
+
+    chunks = repository.list_chunks(str(document_id), owner_user_id)
+    service = HierarchicalSummarizationService(
+        answer_client,
+        map_max_chars=settings.summarization_map_max_chars,
+        reduce_max_chars=settings.summarization_reduce_max_chars,
+        max_reduction_levels=settings.summarization_max_reduction_levels,
+    )
+    try:
+        return service.summarize(
+            document_id=str(document_id),
+            style=request.style,
+            chunks=chunks,
+        )
+    except EmptyDocumentError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except EvidenceValidationError as exc:
+        raise HTTPException(status_code=502, detail="Summary evidence validation failed.") from exc
+    except SummarizationError as exc:
+        raise HTTPException(status_code=503, detail="Summarization service unavailable.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.exception_handler(StarletteHTTPException)

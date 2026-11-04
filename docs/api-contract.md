@@ -118,7 +118,27 @@ Planned. This endpoint will accept a question about a document and return a grou
 
 ### POST /api/v1/documents/{document_id}/summary
 
-Planned. This endpoint will generate a summary of a document or selected section.
+Purpose: generate a transient, owner-scoped hierarchical summary over all ordered chunks of a ready document. The request style is `concise` or `detailed`; summaries are not persisted.
+
+```json
+{"style":"concise"}
+```
+
+Successful response:
+
+```json
+{
+  "document_id":"8d68f59b-2eb6-4269-836e-024a4d6f4c67",
+  "style":"concise",
+  "executive_summary":"...",
+  "findings":[{"text":"...","category":"obligation","evidence":[{"chunk_id":"<chunk-id>","page_number":3,"page_start":3,"page_end":3,"section_title":"Payment Terms"}]}],
+  "limitations":["..."],
+  "map_group_count":2,
+  "reduction_level_count":1
+}
+```
+
+The backend validates every model-returned chunk ID against the authenticated owner's original authorized chunks. Database metadata replaces any page or section values returned by the model. Unknown evidence IDs fail validation; no summary is accepted with fabricated citations.
 
 ### GET /api/v1/documents/{document_id}/findings
 

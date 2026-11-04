@@ -42,9 +42,18 @@ class Settings:
         self.openrouter_api_key = values.get("OPENROUTER_API_KEY", "")
         self.answer_api_key = values.get("ANSWER_API_KEY", "")
         self.answer_model = values.get(
-            "ANSWER_MODEL", "google/gemma-4-26b-a4b-it:free"
+            "ANSWER_MODEL", "nvidia/nemotron-3.5-super-vl:free"
         )
         self.answer_max_tokens = int(values.get("ANSWER_MAX_TOKENS", "1024"))
+        self.summarization_map_max_chars = int(
+            values.get("SUMMARIZATION_MAP_MAX_CHARS", "12000")
+        )
+        self.summarization_reduce_max_chars = int(
+            values.get("SUMMARIZATION_REDUCE_MAX_CHARS", "12000")
+        )
+        self.summarization_max_reduction_levels = int(
+            values.get("SUMMARIZATION_MAX_REDUCTION_LEVELS", "4")
+        )
         self.embedding_provider = values.get("EMBEDDING_PROVIDER", "openrouter")
         self.embedding_model = values.get(
             "EMBEDDING_MODEL", "openai/text-embedding-3-small"

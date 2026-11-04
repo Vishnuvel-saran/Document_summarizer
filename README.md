@@ -4,7 +4,7 @@ This repository is the foundation for an AI-powered document intelligence platfo
 
 ## Current implementation status
 
-Completed for Day 1 through Day 5:
+Completed for Day 1 through Day 6:
 
 - React + Vite frontend with a backend status indicator
 - FastAPI API with `GET /api/v1/health`
@@ -25,13 +25,14 @@ Completed for Day 1 through Day 5:
 - **Semantic retrieval** via pgvector cosine similarity and OpenRouter query embeddings
 - **Hybrid retrieval** combining BM25 and semantic with Reciprocal Rank Fusion (RRF, k0=60)
 - **Search API**: `POST /api/v1/documents/{document_id}/search` supporting `bm25`, `semantic`, and `hybrid` modes
+- **Grounded chat**: `POST /api/v1/documents/{document_id}/answer` with validated chunk citations
+- **Hierarchical summary**: `POST /api/v1/documents/{document_id}/summary` with map, reduce, and evidence-validation stages
 - architecture, database, ingestion, and API documentation
 - backend and frontend tests
 
 Deferred to future phases:
 
-- LLM orchestrator and OpenRouter routing
-- summarization and legal extraction workflows
+- legal extraction and advanced reranking workflows
 - full auth UI and session flows
 - production deployment and monitoring
 
@@ -97,8 +98,9 @@ The app exposes:
 - `POST /api/v1/documents` for secure PDF/DOCX upload validation and content extraction
 - `POST /api/v1/documents/{document_id}/process` for authenticated chunking, embeddings, and vector persistence
 - `POST /api/v1/documents/{document_id}/search` for BM25, semantic, and hybrid retrieval
-- Swagger UI at `http://127.0.0.1:8000/docs`
-
+- `POST /api/v1/documents/{document_id}/answer` for grounded document questions
+- `POST /api/v1/documents/{document_id}/summary` for hierarchical document summarization
+- Swagger UI at `http://127.0.0.1:8000/docs`
 ## Supabase and database setup
 
 1. Create a Supabase project if one does not already exist.
@@ -123,6 +125,12 @@ CHUNK_TARGET_TOKENS=500
 CHUNK_OVERLAP_TOKENS=75
 CHUNK_MAX_TOKENS=700
 CHUNK_TOKENIZER_ENCODING=cl100k_base
+ANSWER_API_KEY=<separate-openrouter-answer-key>
+ANSWER_MODEL=nvidia/nemotron-3.5-super-vl:free
+ANSWER_MAX_TOKENS=1024
+SUMMARIZATION_MAP_MAX_CHARS=12000
+SUMMARIZATION_REDUCE_MAX_CHARS=12000
+SUMMARIZATION_MAX_REDUCTION_LEVELS=4
 ```
 
 Note: modern Supabase projects normally use JWKS/RS256 verification and do not require `SUPABASE_JWT_SECRET`. The service-role key must never be exposed to the browser. The frontend should only use non-sensitive client-facing configuration.

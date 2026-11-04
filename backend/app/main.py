@@ -10,7 +10,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from starlette.exceptions import HTTPException as StarletteHTTPException
-
 from app import db as db_module
 from app.auth import get_current_user
 from app.core.config import settings
@@ -116,7 +115,6 @@ def get_document_processing_service() -> DocumentProcessingService:
     )
 
 
-
 def get_embedding_provider() -> OpenRouterEmbeddingProvider:
     """FastAPI dependency: builds and validates the embedding provider from settings.
 
@@ -140,7 +138,6 @@ def get_embedding_provider() -> OpenRouterEmbeddingProvider:
         timeout_seconds=settings.embedding_timeout_seconds,
         max_retries=settings.embedding_max_retries,
     )
-
 
 
 @app.get(f"{settings.api_v1_prefix}/health", response_model=HealthResponse)
@@ -309,7 +306,6 @@ def search_document_chunks(
         raise HTTPException(
             status_code=503, detail="Embedding provider unavailable."
         ) from exc
-
 
 
 def get_answer_client() -> OpenRouterAnswerClient:

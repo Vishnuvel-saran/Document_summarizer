@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Literal
 
 from pydantic import BaseModel, Field
+from pydantic import field_validator
 
 
 RetrievalMode = Literal["bm25", "semantic", "hybrid"]
@@ -33,6 +34,13 @@ class DocumentSearchRequest(BaseModel):
     query: str
     mode: RetrievalMode = "hybrid"
     top_k: int = Field(default=5, ge=1, le=50)
+
+    @field_validator("query")
+    @classmethod
+    def _query_not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Query must not be blank.")
+        return v
 
 
 class DocumentSearchResponse(BaseModel):

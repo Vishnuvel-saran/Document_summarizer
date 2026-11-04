@@ -313,7 +313,7 @@ class DocumentChunkRepository:
                 connection.execute(
                     text(
                         """
-                    SELECT c.id, c.chunk_index, c.content, c.page_number, c.page_start,
+                    SELECT c.id, c.document_id, c.chunk_index, c.content, c.page_number, c.page_start,
                            c.page_end, c.section_title, c.block_type,
                            c.source_block_indices, c.source_metadata, c.token_count,
                            c.token_counting_method, c.content_hash, c.embedding_model,
